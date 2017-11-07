@@ -9,7 +9,7 @@ data LispVal = Atom String
              | DottedList [LispVal] LispVal
              | Number Integer
              | String String
-             | Bool Bool
+             | Bool Bool deriving (Show)
 
 main :: IO ()
 main = do (expr:_) <- getArgs
@@ -17,8 +17,8 @@ main = do (expr:_) <- getArgs
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
-                   Left err -> "No match: " ++ show err
-                   Right _  -> "Found value"
+                   Left err  -> "No match: " ++ show err
+                   Right val -> "Found value: " ++ show val
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -26,11 +26,19 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 spaces :: Parser ()
 spaces = skipMany1 space
 
+parseEscapeChar :: Parser String
+parseEscapeChar = do _ <- char '\\'
+                     c <- oneOf "\\\"0nrvtbf"
+                     return [c]
+
+parseNonEscape :: Parser String
+parseNonEscape = return <$> noneOf "\\\""
+
 parseString :: Parser LispVal
 parseString = do _ <- char '"'
-                 x <- many (noneOf "\"")
+                 x <- many (parseNonEscape <|> parseEscapeChar)
                  _ <- char '"'
-                 return $ String x
+                 return $ String $ concat x
 
 parseAtom :: Parser LispVal
 parseAtom = do first <- letter <|> symbol
@@ -42,7 +50,7 @@ parseAtom = do first <- letter <|> symbol
                           _    -> Atom atom
 
 parseNumber :: Parser LispVal
-parseNumber = liftM (Number . read) $ many1 digit
+parseNumber = Number . read <$> many1 digit
 
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
