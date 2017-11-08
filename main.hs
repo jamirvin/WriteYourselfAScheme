@@ -8,7 +8,7 @@ data LispVal = Atom String
              | List [LispVal]
              | DottedList [LispVal] LispVal
              | Number Integer
-             | Float Float
+             | Float Double
              | String String
              | Character Char
              | Bool Bool deriving (Show)
@@ -59,10 +59,21 @@ parseNumber :: Parser LispVal
 parseNumber = fmap Number $ number <|> radixHex <|> radixDec <|> radixBin <|> radixOct
                 where number = read <$> many1 digit
                       radixDec = try $ string "#d" >> number
-                      radixHex = try $ fmap (fst . head . readHex) (string "#x" >> many1 hexDigit)
+                      radixHex = try $ fmap (val readHex) (string "#x" >> many1 hexDigit)
                       radixBin = try $ fmap readBin (string "#b" >> many1 (oneOf "01"))
-                      readBin = fst . head . readInt 2 (`elem` "01") digitToInt
-                      radixOct = try $ fmap (fst . head . readOct) (string "#o" >> many1 octDigit)
+                      readBin = val $ readInt 2 (`elem` "01") digitToInt
+                      radixOct = try $ fmap (val readOct) (string "#o" >> many1 octDigit)
+
+val :: ReadS a -> String -> a
+val r = fst . head . r
+
+parseFloat :: Parser LispVal
+parseFloat = fmap (Float . val readFloat) floatString
+               where
+                 floatString = try $ do n <- many1 digit
+                                        decimal <- char '.'
+                                        m <- many1 digit
+                                        return $ n ++ [decimal] ++ m
 
 parseChar :: Parser LispVal
 parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
@@ -74,10 +85,9 @@ parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
                                notFollowedBy alphaNum
                                return c
 
-
-
 parseExpr :: Parser LispVal
-parseExpr = parseNumber
+parseExpr = parseFloat
+            <|> parseNumber
             <|> parseChar
             <|> parseString
             <|> parseAtom
