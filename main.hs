@@ -1,7 +1,7 @@
 module Main where
-import           Control.Monad
+import           Data.Char
+import           Numeric
 import           System.Environment
-import           System.IO
 import           Text.ParserCombinators.Parsec hiding (spaces)
 
 data LispVal = Atom String
@@ -26,19 +26,23 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 spaces :: Parser ()
 spaces = skipMany1 space
 
-parseEscapeChar :: Parser String
+parseEscapeChar :: Parser Char
 parseEscapeChar = do _ <- char '\\'
-                     c <- oneOf "\\\"0nrvtbf"
-                     return [c]
+                     c <- oneOf "\\\"nrt"
+                     return $ case c of
+                                'n' -> '\n'
+                                'r' -> '\r'
+                                't' -> '\t'
+                                _   -> c
 
-parseNonEscape :: Parser String
-parseNonEscape = return <$> noneOf "\\\""
+parseNonEscape :: Parser Char
+parseNonEscape = noneOf "\\\"\n\r\t"
 
 parseString :: Parser LispVal
 parseString = do _ <- char '"'
                  x <- many (parseNonEscape <|> parseEscapeChar)
                  _ <- char '"'
-                 return $ String $ concat x
+                 return $ String x
 
 parseAtom :: Parser LispVal
 parseAtom = do first <- letter <|> symbol
@@ -50,9 +54,15 @@ parseAtom = do first <- letter <|> symbol
                           _    -> Atom atom
 
 parseNumber :: Parser LispVal
-parseNumber = Number . read <$> many1 digit
+parseNumber = fmap Number $ number <|> radixHex <|> radixDec <|> radixBin <|> radixOct
+                where number = read <$> many1 digit
+                      radixDec = try $ string "#d" >> number
+                      radixHex = try $ fmap (fst . head . readHex) (string "#x" >> many1 hexDigit)
+                      radixBin = try $ fmap readBin (string "#b" >> many1 (oneOf "01"))
+                      readBin = fst . head . readInt 2 (`elem` "01") digitToInt
+                      radixOct = try $ fmap (fst . head . readOct) (string "#o" >> many1 octDigit)
 
 parseExpr :: Parser LispVal
-parseExpr = parseAtom
+parseExpr = parseNumber
             <|> parseString
-            <|> parseNumber
+            <|> parseAtom
