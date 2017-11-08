@@ -8,7 +8,9 @@ data LispVal = Atom String
              | List [LispVal]
              | DottedList [LispVal] LispVal
              | Number Integer
+             | Float Float
              | String String
+             | Character Char
              | Bool Bool deriving (Show)
 
 main :: IO ()
@@ -62,7 +64,20 @@ parseNumber = fmap Number $ number <|> radixHex <|> radixDec <|> radixBin <|> ra
                       readBin = fst . head . readInt 2 (`elem` "01") digitToInt
                       radixOct = try $ fmap (fst . head . readOct) (string "#o" >> many1 octDigit)
 
+parseChar :: Parser LispVal
+parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
+            where
+              charName = try (spaceName <|> newLine)
+              spaceName = string "space" >> return ' '
+              newLine = string "newline" >> return '\n'
+              charLiteral = do c <- anyChar
+                               notFollowedBy alphaNum
+                               return c
+
+
+
 parseExpr :: Parser LispVal
 parseExpr = parseNumber
+            <|> parseChar
             <|> parseString
             <|> parseAtom
