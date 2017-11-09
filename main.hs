@@ -1,5 +1,8 @@
 module Main where
+import           Control.Monad
 import           Data.Char
+import           Data.Complex
+import           Data.Ratio
 import           Numeric
 import           System.Environment
 import           Text.ParserCombinators.Parsec hiding (spaces)
@@ -9,6 +12,8 @@ data LispVal = Atom String
              | DottedList [LispVal] LispVal
              | Number Integer
              | Float Double
+             | Rational Rational
+             | Complex (Complex Double)
              | String String
              | Character Char
              | Bool Bool deriving (Show)
@@ -19,8 +24,8 @@ main = do (expr:_) <- getArgs
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
-                   Left err  -> "No match: " ++ show err
-                   Right val -> "Found value: " ++ show val
+                   Left err -> "No match: " ++ show err
+                   Right v  -> "Found value: " ++ show v
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -75,6 +80,26 @@ parseFloat = fmap (Float . val readFloat) floatString
                                         m <- many1 digit
                                         return $ n ++ [decimal] ++ m
 
+parseRational :: Parser LispVal
+parseRational = try $ do n <- many1 digit
+                         _ <- char '/'
+                         m <- many1 digit
+                         return $ Rational $ read n % read m
+
+toDouble :: LispVal -> Double
+toDouble (Float n) = realToFrac n
+toDouble (Number n) = fromInteger n
+toDouble (Complex n) = realPart n
+toDouble (Rational n) = realToFrac n
+toDouble x = error $ "LispVal " ++ show x ++ " cannot be converted to Double"
+
+parseComplex :: Parser LispVal
+parseComplex = try $ do n <- try parseFloat <|> parseNumber
+                        _ <- char '+'
+                        m <- try parseFloat <|> parseNumber
+                        _ <- char 'i'
+                        return $ Complex (toDouble n :+ toDouble m)
+
 parseChar :: Parser LispVal
 parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
             where
@@ -86,8 +111,28 @@ parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
                                return c
 
 parseExpr :: Parser LispVal
-parseExpr = parseFloat
+parseExpr = parseComplex
+            <|> parseRational
+            <|> parseFloat
             <|> parseNumber
             <|> parseChar
             <|> parseString
             <|> parseAtom
+            <|> parseQuoted
+            <|> do _ <- char '('
+                   x <- try parseList <|> parseDottedList
+                   _ <- char ')'
+                   return x
+
+parseList :: Parser LispVal
+parseList = List <$> sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList = do h <- endBy parseExpr spaces
+                     t <- char '.' >> spaces >> parseExpr
+                     return $ DottedList h t
+
+parseQuoted :: Parser LispVal
+parseQuoted = do _ <- char '\''
+                 x <- parseExpr
+                 return $ List [Atom "quote", x]
