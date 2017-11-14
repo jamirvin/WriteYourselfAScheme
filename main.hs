@@ -1,5 +1,5 @@
 module Main where
-import           Control.Monad
+import           Data.Array
 import           Data.Char
 import           Data.Complex
 import           Data.Ratio
@@ -16,6 +16,7 @@ data LispVal = Atom String
              | Complex (Complex Double)
              | String String
              | Character Char
+             | Vector (Array Int LispVal)
              | Bool Bool deriving (Show)
 
 main :: IO ()
@@ -110,15 +111,15 @@ parseChar = try $ fmap Character $ string "#\\" >> (charName <|> charLiteral)
                                notFollowedBy alphaNum
                                return c
 
+parseNumberTypes :: Parser LispVal
+parseNumberTypes = parseComplex <|> parseRational <|> parseFloat <|> parseNumber
+
 parseExpr :: Parser LispVal
-parseExpr = parseComplex
-            <|> parseRational
-            <|> parseFloat
-            <|> parseNumber
+parseExpr = parseNumberTypes
             <|> parseChar
             <|> parseString
             <|> parseAtom
-            <|> parseQuoted
+            <|> parseSugarTypes
             <|> do _ <- char '('
                    x <- try parseList <|> parseDottedList
                    _ <- char ')'
@@ -132,7 +133,22 @@ parseDottedList = do h <- endBy parseExpr spaces
                      t <- char '.' >> spaces >> parseExpr
                      return $ DottedList h t
 
+parseSugarTypes :: Parser LispVal
+parseSugarTypes = parseQuoted <|> parseQuasiquote <|> parseUnquote
+
+parseSugar :: Char -> String -> Parser LispVal
+parseSugar sugar expansion = do _ <- char sugar
+                                x <- parseExpr
+                                return $ List [Atom expansion, x]
+
 parseQuoted :: Parser LispVal
-parseQuoted = do _ <- char '\''
-                 x <- parseExpr
-                 return $ List [Atom "quote", x]
+parseQuoted = parseSugar '\'' "quote"
+
+parseQuasiquote :: Parser LispVal
+parseQuasiquote = parseSugar '`' "quasiquote"
+
+parseUnquote :: Parser LispVal
+parseUnquote = parseSugar ',' "unquote"
+
+parseVector :: LispVal
+parseVector = Vector $ array (0, 1) [(0, Number 0), (1, Atom "Thing")]
