@@ -3,6 +3,7 @@ import           Data.Array
 import           Data.Char
 import           Data.Complex
 import           Data.Ratio
+import qualified Data.Vector                   as V
 import           Numeric
 import           System.Environment
 import           Text.ParserCombinators.Parsec hiding (spaces)
@@ -16,7 +17,7 @@ data LispVal = Atom String
              | Complex (Complex Double)
              | String String
              | Character Char
-             | Vector (Array Int LispVal)
+             | Vector (V.Vector LispVal)
              | Bool Bool deriving (Show)
 
 main :: IO ()
@@ -118,6 +119,7 @@ parseExpr :: Parser LispVal
 parseExpr = parseNumberTypes
             <|> parseChar
             <|> parseString
+            <|> parseVector
             <|> parseAtom
             <|> parseSugarTypes
             <|> do _ <- char '('
@@ -150,5 +152,8 @@ parseQuasiquote = parseSugar '`' "quasiquote"
 parseUnquote :: Parser LispVal
 parseUnquote = parseSugar ',' "unquote"
 
-parseVector :: LispVal
-parseVector = Vector $ array (0, 1) [(0, Number 0), (1, Atom "Thing")]
+parseVector :: Parser LispVal
+parseVector = try $ do _ <- string "#("
+                       l <- sepBy parseExpr spaces
+                       _ <- char ')'
+                       return . Vector . V.fromList $ l
