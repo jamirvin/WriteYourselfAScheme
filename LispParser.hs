@@ -1,6 +1,6 @@
 module LispParser
 (
-  LispNumber,
+  LispNumber(Integer, Float, Rational, Complex),
   LispVal(Atom, List, DottedList, Number, String, Character, Vector, Bool),
   readExpr
 ) where
